@@ -8,7 +8,6 @@ import { aud } from '@/lib/money';
 import type { Order, OrderStatus } from '@/lib/types';
 
 const POLL_MS = 4000;
-const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
 type Stats = {
   days: { label: string; count: number; cents: number }[];
@@ -137,7 +136,7 @@ export default function OrdersBoard() {
 
   useEffect(() => {
     // Sound needs one click per visit: browsers block audio until the page is interacted with.
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID) return setPushState('unsupported');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return setPushState('unsupported');
     if (Notification.permission === 'denied') return setPushState('denied');
     navigator.serviceWorker.getRegistration('/sw.js').then(async (reg) => {
       const sub = await reg?.pushManager.getSubscription();
@@ -158,7 +157,9 @@ export default function OrdersBoard() {
       if (perm !== 'granted') return setPushState('denied');
       const reg = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(VAPID) }));
+      const { publicKey } = await fetch('/api/admin/push').then((r) => r.json());
+      if (!publicKey) throw new Error('push keys are not set up');
+      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(publicKey) }));
       await fetch('/api/admin/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
       setPushState('on');
     } catch (e) {

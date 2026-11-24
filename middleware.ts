@@ -3,7 +3,7 @@ import { ADMIN_COOKIE, verifySessionToken } from '@/lib/auth';
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname === '/admin/login' || pathname === '/api/admin/login') return NextResponse.next();
+  if (pathname === '/admin/login' || pathname === '/api/admin/login' || pathname === '/api/admin/setup') return NextResponse.next();
   const ok = await verifySessionToken(req.cookies.get(ADMIN_COOKIE)?.value);
   if (ok) return NextResponse.next();
   if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'Sign in again.' }, { status: 401 });
@@ -13,4 +13,5 @@ export async function middleware(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ['/admin/:path*', '/api/admin/:path*'] };
+// Node runtime so the session check can read the signing key from the database.
+export const config = { matcher: ['/admin/:path*', '/api/admin/:path*'], runtime: 'nodejs' };

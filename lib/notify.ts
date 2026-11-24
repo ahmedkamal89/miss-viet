@@ -3,6 +3,7 @@ import { aud } from './money';
 import { siteUrl } from './stripe';
 import type { Order } from './types';
 import { ORDER_COLUMNS } from './orders';
+import { vapidKeys } from './secrets';
 
 /* ---------------- email ---------------- */
 
@@ -63,11 +64,10 @@ function orderHtml(o: Order) {
 /* ---------------- push ---------------- */
 
 async function sendPush(payload: Record<string, unknown>) {
-  const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const priv = process.env.VAPID_PRIVATE_KEY;
-  if (!pub || !priv) return;
+  const keys = await vapidKeys();
+  if (!keys) return;
   const webpush = (await import('web-push')).default;
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', pub, priv);
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', keys.publicKey, keys.privateKey);
   const subs = await sql<{ endpoint: string; p256dh: string; auth: string }[]>`
     select endpoint, p256dh, auth from push_subscriptions`;
   await Promise.all(
@@ -155,5 +155,5 @@ export async function sendTestAlert() {
   await sendPush({ title: 'Alerts are working', body: 'New orders will show up like this.', url: '/admin', tag: 'test' });
   if (process.env.ADMIN_EMAIL)
     await sendEmail(process.env.ADMIN_EMAIL, 'Test alert from your ordering site', '<p>Email alerts are working.</p>', 'Email alerts are working.');
-  return { push: Boolean(process.env.VAPID_PRIVATE_KEY), email: Boolean(process.env.ADMIN_EMAIL && (process.env.RESEND_API_KEY || process.env.SMTP_HOST)) };
+  return { push: Boolean(await vapidKeys()), email: Boolean(process.env.ADMIN_EMAIL && (process.env.RESEND_API_KEY || process.env.SMTP_HOST)) };
 }

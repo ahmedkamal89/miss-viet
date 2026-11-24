@@ -1,48 +1,55 @@
-// Edge- and Node-compatible signed session cookie for the single admin account.
+// Admin sign-in for the single staff account (Node runtime).
+// The password comes from ADMIN_PASSWORD if set; otherwise the owner creates it
+// on first visit to /admin using the one-time setup code printed in the build log.
+import crypto from 'node:crypto';
+import { getOrCreatePrivate, getPrivate, randomToken, setPrivate } from './secrets';
+
 export const ADMIN_COOKIE = 'mv_admin';
 const WEEK = 60 * 60 * 24 * 7;
 
-function secret() {
-  const s = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD;
-  if (!s) throw new Error('Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET');
-  return s;
+async function secret() {
+  return process.env.ADMIN_SESSION_SECRET || (await getOrCreatePrivate('_session_secret', () => randomToken(48)));
 }
 
-async function hmac(data: string) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret()), { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-  ]);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
-  return Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+const hmac = (key: string, data: string) => crypto.createHmac('sha256', key).update(data).digest('hex');
 
 function safeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
-  let r = 0;
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
 export async function createSessionToken() {
   const exp = Math.floor(Date.now() / 1000) + WEEK;
-  return `${exp}.${await hmac(`admin.${exp}`)}`;
+  return `${exp}.${hmac(await secret(), `admin.${exp}`)}`;
 }
 
 export async function verifySessionToken(token: string | undefined) {
   if (!token) return false;
   const [exp, sig] = token.split('.');
   if (!exp || !sig || Number(exp) < Date.now() / 1000) return false;
-  return safeEqual(sig, await hmac(`admin.${exp}`));
+  return safeEqual(sig, hmac(await secret(), `admin.${exp}`));
+}
+
+export async function adminConfigured() {
+  return Boolean(process.env.ADMIN_PASSWORD) || Boolean(await getPrivate('_admin_pw'));
 }
 
 export async function checkPassword(pw: string) {
-  const real = process.env.ADMIN_PASSWORD;
-  if (!real) return false;
-  // compare HMACs so timing does not leak length/content
-  return safeEqual(await hmac(`pw.${pw}`), await hmac(`pw.${real}`));
+  if (process.env.ADMIN_PASSWORD) {
+    const k = await secret();
+    return safeEqual(hmac(k, `pw.${pw}`), hmac(k, `pw.${process.env.ADMIN_PASSWORD}`));
+  }
+  const stored = await getPrivate('_admin_pw');
+  if (!stored) return false;
+  const [salt, hash] = stored.split(':');
+  const got = crypto.scryptSync(pw, salt, 64).toString('hex');
+  return safeEqual(got, hash);
+}
+
+export async function setPassword(pw: string) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  await setPrivate('_admin_pw', `${salt}:${crypto.scryptSync(pw, salt, 64).toString('hex')}`);
 }
 
 export const cookieOptions = {

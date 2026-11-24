@@ -1,5 +1,13 @@
 import { sql } from '@/lib/db';
 import { body, fail, json } from '@/lib/http';
+import { vapidKeys } from '@/lib/secrets';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  const k = await vapidKeys();
+  return json({ publicKey: k?.publicKey ?? null });
+}
 
 type Sub = { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
 

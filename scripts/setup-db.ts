@@ -5,6 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import postgres from 'postgres';
 import { MENU } from './menu-data';
 
@@ -27,6 +28,21 @@ const sql = postgres(url, { max: 1, onnotice: () => {} });
 async function main() {
   await sql.unsafe(fs.readFileSync(path.join(process.cwd(), 'scripts/schema.sql'), 'utf8'));
   console.log('✓ tables ready');
+
+  // First-run admin setup: unless ADMIN_PASSWORD is set, print a one-time code the owner
+  // types at /admin to create their password. Nothing secret has to go into Vercel.
+  const [pw] = await sql`select 1 from settings where key = '_admin_pw'`;
+  if (!process.env.ADMIN_PASSWORD && !pw) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const fresh = Array.from(crypto.randomBytes(8), (b) => alphabet[b % alphabet.length]).join('');
+    await sql`insert into settings (key, value) values ('_setup_code', ${fresh}) on conflict (key) do nothing`;
+    const [{ value }] = await sql`select value from settings where key = '_setup_code'`;
+    console.log('\n==============================================');
+    console.log('  ADMIN SETUP CODE:  ' + value);
+    console.log('  Open /admin on your site and use this code');
+    console.log('  to create the admin password.');
+    console.log('==============================================\n');
+  }
 
   const reset = process.argv.includes('--reset');
   const [{ count }] = await sql`select count(*)::int as count from menu_items`;

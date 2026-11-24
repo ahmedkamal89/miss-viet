@@ -23,6 +23,7 @@ export async function getSettings(): Promise<StoreSettings> {
   const rows = await sql<{ key: string; value: string }[]>`select key, value from settings`;
   const s: StoreSettings = structuredClone(DEFAULT_SETTINGS);
   for (const r of rows) {
+    if (r.key.startsWith('_')) continue;
     try {
       (s as Record<string, unknown>)[r.key] = JSON.parse(r.value);
     } catch {
