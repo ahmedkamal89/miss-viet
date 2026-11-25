@@ -11,6 +11,7 @@ import { aud } from '@/lib/money';
 type Store = {
   acceptingOrders: boolean;
   statusLabel: string;
+  open: boolean;
   notice: string;
   slots: string[];
   paymentMethods: ('CARD' | 'PICKUP')[];
@@ -84,6 +85,11 @@ export default function Checkout() {
           <h1>Checkout</h1>
           {cancelled && <p className="notice" style={{ marginBottom: 16 }}>Payment was cancelled, so we haven’t sent your order to the kitchen. Your cart is below if you want to try again.</p>}
           {store?.notice && <p className="notice" style={{ marginBottom: 16 }}>{store.notice}</p>}
+          {store && !closed && !store.open && (
+            <p className="notice" style={{ marginBottom: 16 }}>
+              We’re closed right now ({store.statusLabel.replace(/^Closed, /, '')}). You can still order ahead: pick a time below and we’ll have it ready.
+            </p>
+          )}
           {closed && (
             <p className="error">
               {store!.acceptingOrders ? `We’re not taking online orders right now. ${store!.statusLabel}.` : 'Online ordering is paused right now.'} Call{' '}

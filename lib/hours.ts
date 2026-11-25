@@ -49,20 +49,31 @@ export function openStatus(hours: WeekHours, d = new Date()) {
 }
 
 /**
- * Pickup choices for today: "ASAP" plus 15-minute slots until 15 minutes before close.
- * Returned values are display strings and are stored on the order as-is.
+ * Pickup choices. While the shop is open: "ASAP" plus 15-minute slots for the rest of today.
+ * After closing (or on a closed day): slots for the next opening day, so customers can order ahead.
+ * Later days carry their date so the kitchen board stays clear. Values are stored on the order as-is.
  */
 export function pickupSlots(hours: WeekHours, prepMinutes: number, d = new Date()) {
   const { day, minutes } = adelaideNow(d);
-  const today = hours[day];
-  if (!today) return [];
-  const open = toMin(today.open);
-  const close = toMin(today.close);
-  if (minutes >= close - 10) return [];
-  const slots: string[] = [];
-  if (minutes >= open) slots.push(`ASAP (about ${prepMinutes} min)`);
-  let t = Math.max(minutes + prepMinutes, open + prepMinutes);
-  t = Math.ceil(t / 15) * 15;
-  for (; t <= close - 15; t += 15) slots.push(`Today at ${fmtTime(t)}`);
-  return slots;
+  for (let i = 0; i < 7; i++) {
+    const dd = (day + i) % 7;
+    const h = hours[dd];
+    if (!h) continue;
+    const open = toMin(h.open);
+    const close = toMin(h.close);
+    const slots: string[] = [];
+    let start = open + prepMinutes;
+    if (i === 0) {
+      if (minutes >= close - 10) continue;
+      if (minutes >= open) slots.push(`ASAP (about ${prepMinutes} min)`);
+      start = Math.max(minutes + prepMinutes, open + prepMinutes);
+    }
+    const date = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' })
+      .format(new Date(d.getTime() + i * 86_400_000))
+      .replace(',', '');
+    const label = i === 0 ? 'Today' : i === 1 ? `Tomorrow (${date})` : date;
+    for (let t = Math.ceil(start / 15) * 15; t <= close - 15; t += 15) slots.push(`${label} at ${fmtTime(t)}`);
+    if (slots.length) return slots;
+  }
+  return [];
 }
